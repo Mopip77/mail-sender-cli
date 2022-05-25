@@ -6,8 +6,8 @@ SMTP_SERVER=${SMTP_SERVER:-}
 SMTP_PORT=${SMTP_PORT:-}
 MAIL_FROM=${MAIL_FROM:-}
 PASSWORD=${PASSWORD:-}
-TO=
 
+MAIL_TO=
 SUBJECT=
 BODY=
 
@@ -24,7 +24,7 @@ param_validate() {
   elif [[ -z $PASSWORD ]]; then
     echo "password is required."
     exit 1
-  elif [[ -z $TO ]]; then
+  elif [[ -z $MAIL_TO ]]; then
     echo "mail-to is required."
     exit 1
   elif [[ -z $SUBJECT ]]; then
@@ -43,12 +43,15 @@ usage() {
   [--subject subj] 
   [--body body]
 
-Argument below can be replaced by envirionment variable.
+Arguments below can be replaced by envirionment variable.
   --smtp-server <=> SMTP_SERVER
   --smtp-port   <=> SMTP_PORT
   --password    <=> PASSWORD
   --mail-from   <=> MAIL_FROM
-  """
+
+Arguments below can be repeatly assigned.
+  --mail-to
+"""
 }
 
 quit=false
@@ -59,7 +62,12 @@ while [ $# -gt 0 ]; do
     --smtp-port ) SMTP_PORT="$2"; shift 2 ;;
     --mail-from ) MAIL_FROM="$2"; shift 2 ;;
     --password ) PASSWORD="$2"; shift 2 ;;
-    --mail-to ) TO="$2"; shift 2 ;;
+    --mail-to ) 
+      if [ -n "$2" ]; then
+        MAIL_TO="$2,${MAIL_TO}"
+      fi
+      shift 2
+      ;;
     -s | --subject ) SUBJECT="$2"; shift 2 ;;
     -b | --body ) BODY="$2"; shift 2 ;;
     -h ) usage ; quit=true; break ;;
@@ -71,8 +79,18 @@ if $quit; then exit 0; fi
 
 param_validate
 
-echo -e  """From: "${MAIL_FROM}" <${MAIL_FROM}>
-To: "${TO}" <${TO}>
+set -x
+
+# parse mail receivers
+TO_IN_MAIL=
+TO_CURL_ARGS=
+while read -d',' mail_to; do
+  TO_IN_MAIL=$(echo -e "${TO_IN_MAIL:+$TO_IN_MAIL\n}To: <${mail_to}>")
+  TO_CURL_ARGS=$(echo -e "${TO_CURL_ARGS:+$TO_CURL_ARGS \\} --mail-rcpt ${mail_to}")
+done <<< ${MAIL_TO}
+
+echo """From: <${MAIL_FROM}>
+${TO_IN_MAIL}
 Subject: "$SUBJECT"
 
 ${BODY}
@@ -81,5 +99,5 @@ curl --ssl-reqd \
   --url "smtps://${SMTP_SERVER}:${SMTP_PORT}" \
   --user "${MAIL_FROM}:${PASSWORD}" \
   --mail-from "${MAIL_FROM}" \
-  --mail-rcpt "${TO}" \
+  ${TO_CURL_ARGS} \
   -T -
