@@ -54,6 +54,20 @@ Arguments below can be repeatly assigned.
 """
 }
 
+# $1 string
+# $2 delimiter
+string_split() {
+  string="$1"
+  delimiter="$2"
+
+  OLD_IFS="$IFS"
+  IFS="$delimiter"
+  arr=($1)
+  IFS=$OLD_IFS
+
+  return $arr
+}
+
 quit=false
 
 while [ $# -gt 0 ]; do
@@ -79,17 +93,18 @@ if $quit; then exit 0; fi
 
 param_validate
 
-set -x
-
 # parse mail receivers
 TO_IN_MAIL=
-TO_CURL_ARGS=
-while read -d',' mail_to; do
-  TO_IN_MAIL=$(echo -e "${TO_IN_MAIL:+$TO_IN_MAIL\n}To: <${mail_to}>")
-  TO_CURL_ARGS=$(echo -e "${TO_CURL_ARGS:+$TO_CURL_ARGS \\} --mail-rcpt ${mail_to}")
+declare -a TO_CURL_ARGS
+while IFS="," read -ra receivers; do
+  i=0
+  for receiver in "${receivers[@]}"; do
+    TO_IN_MAIL="${TO_IN_MAIL:+$TO_IN_MAIL\n}To: <${receiver}>"
+    TO_CURL_ARGS+=("--mail-rcpt" "${receiver}")
+  done
 done <<< ${MAIL_TO}
 
-echo """From: <${MAIL_FROM}>
+echo -e """From: <${MAIL_FROM}>
 ${TO_IN_MAIL}
 Subject: "$SUBJECT"
 
@@ -99,5 +114,5 @@ curl --ssl-reqd \
   --url "smtps://${SMTP_SERVER}:${SMTP_PORT}" \
   --user "${MAIL_FROM}:${PASSWORD}" \
   --mail-from "${MAIL_FROM}" \
-  ${TO_CURL_ARGS} \
+  ${TO_CURL_ARGS[@]} \
   -T -
